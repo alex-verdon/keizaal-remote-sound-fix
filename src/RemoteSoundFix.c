@@ -1,7 +1,8 @@
 // RemoteSoundFix - plugin SKSE (client uniquement, sans .esp)
 // Certains sons joués par les PNJ (donc les autres joueurs SkyMP) utilisent le modèle
 // de sortie SOMMono01400Player1st, de type "Defined Speaker Output" (2D, sans distance).
-// Au chargement des données, ce plugin les rebascule sur SOMMono01400Player3rd (3D).
+// (ou SOMUIDefault, 2D lui aussi). Au chargement des données, ce plugin les rebascule
+// sur SOMMono01400Player3rd (3D).
 #include <windows.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -18,7 +19,7 @@ typedef struct {
 } SKSEPluginVersionData;
 
 EXPORT SKSEPluginVersionData SKSEPlugin_Version = {
-    1, 2, "RemoteSoundFix", "Alex", "",
+    1, 3, "RemoteSoundFix", "Alex", "",
     0,
     1 | 4,   /* AddressLibraryPostAE | StructsPost629 */
     {0}, 0
@@ -120,31 +121,51 @@ static uint8_t *lookup(uint32_t formID) {
 }
 
 /* Sons à corriger (Skyrim.esm) */
-static const struct { uint32_t id; const char *name; } TARGETS[] = {
-    /* sauts / atterrissage */
-    {0x071FDB, "FSTGravelJumpUpSD"}, {0x06A161, "FSTStoneSolidJumpUpSD"},
-    {0x071AE5, "FSTSnowJumpUpSD"},   {0x06A15D, "FSTDirtJumpUpSD"},
-    {0x100FFC, "FSTWaterJumpUpSD"},  {0x06A15F, "FSTGrassJumpUpSD"},
-    {0x071AE3, "FSTWoodJumpUpSD"},   {0x06A162, "FSTStoneSolidJumpDownSD"},
-    /* manger / boire */
-    {0x0CAF94, "ITMFoodEat"}, {0x0B6435, "ITMPotionUse"},
-    {0x106614, "ITMPoisonUse"}, {0x10E2EA, "NPCHumanEatSoup"},
-    /* ramasser / poser des objets */
-    {0x03E877, "ITMArrowsDownSD"}, {0x03E7B7, "ITMArrowsUpSD"},
-    {0x07EA3B, "ITMBookCloseSD"}, {0x07EA3A, "ITMBookOpenSD"},
-    {0x03E909, "ITMClothingDownSD"}, {0x03E879, "ITMClothingUpSD"},
-    {0x0899AE, "ITMCoinPouchDown"}, {0x0899AD, "ITMCoinPouchUp"},
-    {0x03E60B, "ITMGenericArmorDownSD"}, {0x03E609, "ITMGenericArmorUpSD"},
-    {0x03EE0C, "ITMGenericBookDownSD"}, {0x03EDDE, "ITMGenericBookUpSD"},
-    {0x03E62C, "ITMGenericClothingDownSD"}, {0x03E633, "ITMGenericClothingUpSD"},
-    {0x03C7B9, "ITMGenericDownSD"}, {0x000DD0, "ITMGenericUpLoFi"}, {0x03C7BA, "ITMGenericUpSD"},
-    {0x03C7C0, "ITMGenericWeaponDownSD"}, {0x03C7BE, "ITMGenericWeaponUpSD"},
-    {0x03E955, "ITMGoldDownSD"}, {0x03E952, "ITMGoldUpSD"},
-    {0x03ED78, "ITMKeyDownSD"}, {0x03ED75, "ITMKeyUpSD"},
-    {0x03EDC0, "ITMPotionDownSD"}, {0x03EDBD, "ITMPotionUpSD"},
-};
-#define PLAYER1ST 0x0B4058  /* SOMMono01400Player1st (2D) */
+#define PLAYER1ST 0x0B4058  /* SOMMono01400Player1st (2D, sans atténuation) */
+#define UIDEFAULT 0x0B75FB  /* SOMUIDefault (2D, sans atténuation) */
 #define PLAYER3RD 0x0428B6  /* SOMMono01400Player3rd (3D) */
+
+/* Sons à corriger : id (ordre de chargement standard Skyrim/Update/Dawnguard/HearthFires/Dragonborn),
+   nom, et modèle de sortie attendu. Un son dont le modèle n'est pas celui attendu n'est pas touché. */
+static const struct { uint32_t id; const char *name; uint32_t from; } TARGETS[] = {
+    /* sauts / atterrissage */
+    {0x071FDB, "FSTGravelJumpUpSD", PLAYER1ST}, {0x06A161, "FSTStoneSolidJumpUpSD", PLAYER1ST},
+    {0x071AE5, "FSTSnowJumpUpSD", PLAYER1ST},   {0x06A15D, "FSTDirtJumpUpSD", PLAYER1ST},
+    {0x100FFC, "FSTWaterJumpUpSD", PLAYER1ST},  {0x06A15F, "FSTGrassJumpUpSD", PLAYER1ST},
+    {0x071AE3, "FSTWoodJumpUpSD", PLAYER1ST},   {0x06A162, "FSTStoneSolidJumpDownSD", PLAYER1ST},
+    /* manger / boire */
+    {0x0CAF94, "ITMFoodEat", PLAYER1ST}, {0x0B6435, "ITMPotionUse", PLAYER1ST},
+    {0x106614, "ITMPoisonUse", PLAYER1ST}, {0x10E2EA, "NPCHumanEatSoup", PLAYER1ST},
+    /* ramasser / poser des objets */
+    {0x03E877, "ITMArrowsDownSD", PLAYER1ST}, {0x03E7B7, "ITMArrowsUpSD", PLAYER1ST},
+    {0x07EA3B, "ITMBookCloseSD", PLAYER1ST}, {0x07EA3A, "ITMBookOpenSD", PLAYER1ST},
+    {0x03E909, "ITMClothingDownSD", PLAYER1ST}, {0x03E879, "ITMClothingUpSD", PLAYER1ST},
+    {0x0899AE, "ITMCoinPouchDown", PLAYER1ST}, {0x0899AD, "ITMCoinPouchUp", PLAYER1ST},
+    {0x03E60B, "ITMGenericArmorDownSD", PLAYER1ST}, {0x03E609, "ITMGenericArmorUpSD", PLAYER1ST},
+    {0x03EE0C, "ITMGenericBookDownSD", PLAYER1ST}, {0x03EDDE, "ITMGenericBookUpSD", PLAYER1ST},
+    {0x03E62C, "ITMGenericClothingDownSD", PLAYER1ST}, {0x03E633, "ITMGenericClothingUpSD", PLAYER1ST},
+    {0x03C7B9, "ITMGenericDownSD", PLAYER1ST}, {0x000DD0, "ITMGenericUpLoFi", PLAYER1ST}, {0x03C7BA, "ITMGenericUpSD", PLAYER1ST},
+    {0x03C7C0, "ITMGenericWeaponDownSD", PLAYER1ST}, {0x03C7BE, "ITMGenericWeaponUpSD", PLAYER1ST},
+    {0x03E955, "ITMGoldDownSD", PLAYER1ST}, {0x03E952, "ITMGoldUpSD", PLAYER1ST},
+    {0x03ED78, "ITMKeyDownSD", PLAYER1ST}, {0x03ED75, "ITMKeyUpSD", PLAYER1ST},
+    {0x03EDC0, "ITMPotionDownSD", PLAYER1ST}, {0x03EDBD, "ITMPotionUpSD", PLAYER1ST},
+    /* récolte, ingrédients, mots (v1.1.0) */
+    {0x00517C9, "ITMIngredientBushUp", UIDEFAULT}, {0x00517C8, "ITMIngredientBushDown", UIDEFAULT},
+    {0x00519D5, "ITMIngredientStemUp", UIDEFAULT}, {0x00519D1, "ITMIngredientStemDown", UIDEFAULT},
+    {0x00BAD13, "ITMIngredientMushroomUp", UIDEFAULT}, {0x00FB974, "ITMIngredientMossUp", UIDEFAULT},
+    {0x00FB975, "ITMIngredientRootUp", UIDEFAULT}, {0x0100F88, "ITMIngredientGrassUp", UIDEFAULT},
+    {0x003CC09, "ITMIngredientDigUp", UIDEFAULT}, {0x004DBAB, "ITMIngredientMeatUp", UIDEFAULT},
+    {0x00FC21E, "ITMIngredientHeartUp", UIDEFAULT}, {0x00FC21F, "ITMIngredientBowlUp", UIDEFAULT},
+    {0x00BFB1F, "ITMIngredientEggWetUp", UIDEFAULT}, {0x00F3661, "ITMIngredientGarlicUp", UIDEFAULT},
+    {0x0100526, "ITMIngredientClamUp", UIDEFAULT}, {0x0100527, "ITMIngredientBuzzUp", UIDEFAULT},
+    {0x010FD50, "ITMIngredientMammothCheeseUp", UIDEFAULT}, {0x010FD51, "ITMIngredientBeehiveHuskUp", UIDEFAULT},
+    {0x200EF9F, "ITMIngredientSoulHuskUp", UIDEFAULT},    /* Dawnguard */
+    {0x401DBED, "ITMIngredientScathecraw", UIDEFAULT},    /* Dragonborn */
+    {0x401DBEF, "ITMIngredientTramaRoot", UIDEFAULT},     /* Dragonborn */
+    {0x003C7C2, "ITMGenericIngredientUpSD", UIDEFAULT}, {0x003C7C3, "ITMGenericIngredientDownSD", UIDEFAULT},
+    {0x003C7C4, "ITMGenericIngredientUpFailSD", UIDEFAULT}, {0x0000F73, "ITMGenericIngredientUpLoFi", UIDEFAULT},
+    {0x00C7A54, "ITMNoteUp", UIDEFAULT}, {0x010F21C, "ITMFishUp", UIDEFAULT},
+};
 #define AE_ALLFORMS_ID 400507
 
 static void apply(void) {
@@ -154,18 +175,19 @@ static void apply(void) {
     uint8_t **pmap = (uint8_t **)(base + off);
     if (!readable(pmap, 8) || !readable(*pmap, 0x30)) { LOG("Table des forms illisible"); return; }
     g_map = *pmap;
-    uint8_t *p1 = lookup(PLAYER1ST), *p3 = lookup(PLAYER3RD);
-    LOG("SOMMono01400Player1st=%p  SOMMono01400Player3rd=%p", p1, p3);
-    if (!p1 || !p3) { LOG("Modèles de sortie introuvables, abandon"); return; }
+    uint8_t *p1 = lookup(PLAYER1ST), *pu = lookup(UIDEFAULT), *p3 = lookup(PLAYER3RD);
+    LOG("SOMMono01400Player1st=%p  SOMUIDefault=%p  SOMMono01400Player3rd=%p", p1, pu, p3);
+    if (!p1 || !pu || !p3) { LOG("Modèles de sortie introuvables, abandon"); return; }
     int fixed = 0;
     for (size_t i = 0; i < sizeof TARGETS / sizeof *TARGETS; i++) {
         uint8_t *form = lookup(TARGETS[i].id);
-        if (!form) { LOG("  %-26s introuvable", TARGETS[i].name); continue; }
+        if (!form) { LOG("  %-30s introuvable", TARGETS[i].name); continue; }
         uint8_t *def = *(uint8_t **)(form + 0x28);
-        if (!readable(def, 0x58)) { LOG("  %-26s descripteur illisible", TARGETS[i].name); continue; }
+        if (!readable(def, 0x58)) { LOG("  %-30s descripteur illisible", TARGETS[i].name); continue; }
         uint8_t **om = (uint8_t **)(def + 0x48);
-        if (*om == p1) { *om = p3; fixed++; LOG("  %-26s corrigé", TARGETS[i].name); }
-        else LOG("  %-26s ignoré (modèle %p, déjà modifié par un autre mod ?)", TARGETS[i].name, *om);
+        uint8_t *expected = TARGETS[i].from == UIDEFAULT ? pu : p1;
+        if (*om == expected) { *om = p3; fixed++; LOG("  %-30s corrigé", TARGETS[i].name); }
+        else LOG("  %-30s ignoré (modèle %p, déjà modifié par un autre mod ?)", TARGETS[i].name, *om);
     }
     LOG("%d son(s) corrigé(s)", fixed);
 }
@@ -178,7 +200,7 @@ EXPORT int SKSEPlugin_Load(const SKSEInterface *skse) {
     g_log = fopen("Data\\SKSE\\Plugins\\RemoteSoundFix.log", "w");
     g_runtime = skse->runtimeVersion;
     g_handle = skse->GetPluginHandle();
-    LOG("RemoteSoundFix 1.0.1 - runtime %u.%u.%u", g_runtime >> 24, (g_runtime >> 16) & 0xFF, (g_runtime >> 4) & 0xFFF);
+    LOG("RemoteSoundFix 1.1.0 - runtime %u.%u.%u", g_runtime >> 24, (g_runtime >> 16) & 0xFF, (g_runtime >> 4) & 0xFFF);
     SKSEMessagingInterface *m = (SKSEMessagingInterface *)skse->QueryInterface(5);
     if (!m || !m->RegisterListener(g_handle, "SKSE", on_message)) { LOG("Messaging SKSE indisponible"); return 0; }
     return 1;
